@@ -2,8 +2,11 @@
 package order
 
 const OrderTaskQueue = "ORDER_TASK_QUEUE"
-const OrderAddProductChannel = "ADD_PRODUCT_CHANNEL"
-const OrderUpdateProductChannel = "UPDATE_PRODUCT_CHANNEL"
-const OrderPayChannel = "PAY_CHANNEL"
+const OrderAddProductRequestChannel = "ADD_PRODUCT_REQUEST_CHANNEL"
+const OrderAddProductResponseChannel = "ADD_PRODUCT_RESPONSE_CHANNEL"
+const OrderUpdateProductRequestChannel = "UPDATE_PRODUCT_REQUEST_CHANNEL"
+const OrderUpdateProductResponseChannel = "UPDATE_PRODUCT_RESPONSE_CHANNEL"
+const OrderPaymentRequestChannel = "PAYMENT_REQUEST_CHANNEL"
+const OrderPaymentResponseChannel = "PAYMENT_RESPONSE_CHANNEL"
 
 // @@@SNIPEND

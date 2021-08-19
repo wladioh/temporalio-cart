@@ -12,13 +12,6 @@
       "program": "${fileDirname}"
     },
     {
-      "name": "Attach to Process",
-      "type": "go",
-      "request": "attach",
-      "mode": "local",
-      "processId": 0
-    },
-    {
       "name": "Launch file",
       "type": "go",
       "request": "launch",

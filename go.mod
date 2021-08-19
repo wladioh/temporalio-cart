@@ -8,6 +8,7 @@ require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.8 // indirect
 	go.temporal.io/sdk v1.9.0
+	gopkg.in/guregu/null.v4 v4.0.0
 	gorm.io/driver/sqlite v1.1.4 // indirect
 	gorm.io/gorm v1.21.13 // indirect
 )

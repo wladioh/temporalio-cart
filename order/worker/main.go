@@ -19,7 +19,10 @@ func main() {
 	defer c.Close()
 	// This worker hosts both Worker and Activity functions
 	w := worker.New(c, order.OrderTaskQueue, worker.Options{})
+	w.RegisterWorkflow(order.AddProductRequestWorkflow)
 	w.RegisterWorkflow(order.OrderWorkflow)
+	w.RegisterWorkflow(order.UpdateProductRequestWorkflow)
+	w.RegisterWorkflow(order.PaymentRequestWorkflow)
 	//w.RegisterActivity(order.ComposeGreeting)
 
 	// client := resty.New().
