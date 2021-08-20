@@ -1,28 +1,26 @@
-// @@@SNIPSTART hello-world-project-template-go-worker
-package main
+package workflows
 
 import (
-	"log"
-
-	"services/order"
+	"services/cart/workflows/contracts"
+	"services/cart/workflows/requests"
 
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 )
 
-func main() {
+func Worker() error {
 	// Create the client object just once per process
 	c, err := client.NewClient(client.Options{})
 	if err != nil {
-		log.Fatalln("unable to create Temporal client", err)
+		return err
 	}
 	defer c.Close()
 	// This worker hosts both Worker and Activity functions
-	w := worker.New(c, order.OrderTaskQueue, worker.Options{})
-	w.RegisterWorkflow(order.AddProductRequestWorkflow)
-	w.RegisterWorkflow(order.OrderWorkflow)
-	w.RegisterWorkflow(order.UpdateProductRequestWorkflow)
-	w.RegisterWorkflow(order.PaymentRequestWorkflow)
+	w := worker.New(c, contracts.OrderTaskQueue, worker.Options{})
+	w.RegisterWorkflow(OrderWorkflow)
+	w.RegisterWorkflow(requests.AddProductRequestWorkflow)
+	w.RegisterWorkflow(requests.UpdateProductRequestWorkflow)
+	w.RegisterWorkflow(requests.PaymentRequestWorkflow)
 	//w.RegisterActivity(order.ComposeGreeting)
 
 	// client := resty.New().
@@ -38,8 +36,7 @@ func main() {
 	// Start listening to the Task Queue
 	err = w.Run(worker.InterruptCh())
 	if err != nil {
-		log.Fatalln("unable to start Worker", err)
+		return err
 	}
+	return nil
 }
-
-// @@@SNIPEND

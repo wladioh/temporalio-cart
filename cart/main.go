@@ -6,8 +6,9 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-
-	"services/order"
+	"services/cart/workflows"
+	"services/cart/workflows/contracts"
+	"services/cart/workflows/requests"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -30,9 +31,9 @@ func (controller *CartController) CreateCart(c *gin.Context) {
 	id := uuid.New()
 	options := Temporal.StartWorkflowOptions{
 		ID:        id.String(),
-		TaskQueue: order.OrderTaskQueue,
+		TaskQueue: contracts.OrderTaskQueue,
 	}
-	we, err := controller.Client.ExecuteWorkflow(context.Background(), options, order.OrderWorkflow, id)
+	we, err := controller.Client.ExecuteWorkflow(context.Background(), options, workflows.OrderWorkflow, id)
 	if err != nil {
 		log.Fatalln("unable to complete Workflow", err)
 	}
@@ -41,7 +42,7 @@ func (controller *CartController) CreateCart(c *gin.Context) {
 }
 
 func (controller *CartController) AddProduct(c *gin.Context) {
-	var request order.AddProductRequest
+	var request requests.AddProductRequest
 	err := GetData(c, &request)
 	if err != nil {
 		c.String(http.StatusBadRequest, "Hello %s ", err)
@@ -51,7 +52,7 @@ func (controller *CartController) AddProduct(c *gin.Context) {
 
 	var status string
 	request.OrderId = id.String()
-	err = controller.ExecuteWorkflow(order.AddProductRequestWorkflow, request, &status)
+	err = controller.ExecuteWorkflow(requests.AddProductRequestWorkflow, request, &status)
 	if err != nil {
 		log.Print("Error signaling client", err)
 		c.String(http.StatusBadRequest, "%s ", err)
@@ -64,7 +65,7 @@ func (controller *CartController) AddProduct(c *gin.Context) {
 func (controller *CartController) ExecuteWorkflow(workflow interface{}, request interface{}, response interface{}) error {
 	options := Temporal.StartWorkflowOptions{
 		ID:        uuid.NewString(),
-		TaskQueue: order.OrderTaskQueue,
+		TaskQueue: contracts.OrderTaskQueue,
 	}
 	log.Printf("Starting workflow %s", options.ID)
 	ctx := context.Background()
@@ -78,7 +79,7 @@ func (controller *CartController) ExecuteWorkflow(workflow interface{}, request 
 }
 
 func (controller *CartController) UpdateProduct(c *gin.Context) {
-	var request order.UpdateProductRequest
+	var request requests.UpdateProductRequest
 	err := GetData(c, &request)
 	if err != nil {
 		c.String(http.StatusBadRequest, "Hello %s ", err)
@@ -89,7 +90,7 @@ func (controller *CartController) UpdateProduct(c *gin.Context) {
 
 	var status string
 	request.OrderId = id.String()
-	err = controller.ExecuteWorkflow(order.UpdateProductRequestWorkflow, request, &status)
+	err = controller.ExecuteWorkflow(requests.UpdateProductRequestWorkflow, request, &status)
 	if err != nil {
 		log.Print("Error signaling client", err)
 		c.String(http.StatusBadRequest, "%s ", err)
@@ -102,8 +103,8 @@ func (controller *CartController) UpdateProduct(c *gin.Context) {
 func (controller *CartController) Payment(c *gin.Context) {
 	id, _ := uuid.Parse(c.Param("cartId"))
 	var status string
-	request := order.PaymentRequest{OrderId: id.String()}
-	err := controller.ExecuteWorkflow(order.PaymentRequestWorkflow, request, &status)
+	request := requests.PaymentRequest{OrderId: id.String()}
+	err := controller.ExecuteWorkflow(requests.PaymentRequestWorkflow, request, &status)
 	if err != nil {
 		c.String(http.StatusBadRequest, "Error %s", err)
 	}

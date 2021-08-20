@@ -5,18 +5,15 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Launch Package",
-      "type": "go",
-      "request": "launch",
-      "mode": "auto",
-      "program": "${fileDirname}"
-    },
-    {
       "name": "Launch file",
       "type": "go",
       "request": "launch",
       "mode": "debug",
-      "program": "${file}"
+      "cwd": "${workspaceFolder}",
+      "program": "main.go",
+      "env": {
+        "TEMPORAL_DEBUG": true
+      }
     }
   ]
 }
