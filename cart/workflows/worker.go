@@ -17,7 +17,7 @@ func Worker() error {
 	defer c.Close()
 	// This worker hosts both Worker and Activity functions
 	w := worker.New(c, contracts.OrderTaskQueue, worker.Options{})
-	w.RegisterWorkflow(OrderWorkflow)
+	w.RegisterWorkflow(CartWorkflow)
 	w.RegisterWorkflow(requests.AddProductRequestWorkflow)
 	w.RegisterWorkflow(requests.UpdateProductRequestWorkflow)
 	w.RegisterWorkflow(requests.PaymentRequestWorkflow)

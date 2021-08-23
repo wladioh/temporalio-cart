@@ -33,7 +33,7 @@ func (controller *CartController) CreateCart(c *gin.Context) {
 		ID:        id.String(),
 		TaskQueue: contracts.OrderTaskQueue,
 	}
-	we, err := controller.Client.ExecuteWorkflow(context.Background(), options, workflows.OrderWorkflow, id)
+	we, err := controller.Client.ExecuteWorkflow(context.Background(), options, workflows.CartWorkflow, id)
 	if err != nil {
 		log.Fatalln("unable to complete Workflow", err)
 	}

@@ -9,30 +9,35 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
-type Order struct {
-	context workflow.Context
-	paid    bool
-	id      uuid.UUID
+type Cart struct {
+	context     workflow.Context
+	paying      bool
+	canceled    bool
+	timeout     bool
+	hasProducts bool
+	emailSended bool
+	id          uuid.UUID
 }
 
-func (order *Order) AddProduct(c workflow.ReceiveChannel, more bool) {
+func (cart *Cart) AddProduct(c workflow.ReceiveChannel, more bool) {
 	var request contracts.Request
-	c.Receive(order.context, &request)
+	c.Receive(cart.context, &request)
 	var data requests.UpdateProductRequest
 	request.GetData(&data)
-	logger := workflow.GetLogger(order.context)
+	logger := workflow.GetLogger(cart.context)
 
 	logger.Info("AddProduct ", data.ProductId)
 
 	logger.Info("Sending response", request.CallingWorkflowId)
 
 	err := workflow.SignalExternalWorkflow(
-		order.context,
+		cart.context,
 		request.CallingWorkflowId,
 		"",
 		contracts.OrderAddProductResponseChannel,
 		requests.AddProductResponse{Status: "OK"},
-	).Get(order.context, nil)
+	).Get(cart.context, nil)
+	cart.hasProducts = true
 	if err != nil {
 		logger.Error("Sending response return error: ", err)
 	} else {
@@ -40,7 +45,7 @@ func (order *Order) AddProduct(c workflow.ReceiveChannel, more bool) {
 	}
 }
 
-func (order *Order) UpdateProduct(c workflow.ReceiveChannel, more bool) {
+func (order *Cart) UpdateProduct(c workflow.ReceiveChannel, more bool) {
 	logger := workflow.GetLogger(order.context)
 	var request contracts.Request
 	c.Receive(order.context, &request)
@@ -63,24 +68,24 @@ func (order *Order) UpdateProduct(c workflow.ReceiveChannel, more bool) {
 	}
 }
 
-func (order *Order) Pay(c workflow.ReceiveChannel, more bool) {
-	logger := workflow.GetLogger(order.context)
+func (cart *Cart) Payment(c workflow.ReceiveChannel, more bool) {
+	logger := workflow.GetLogger(cart.context)
 
 	logger.Info("Start Payment Order ")
 	var request contracts.Request
-	c.Receive(order.context, &request)
+	c.Receive(cart.context, &request)
 	var data requests.PaymentRequest
 	request.GetData(&data)
-	order.paid = true
+	cart.paying = true
 	logger.Info("Pay Order ", data.OrderId)
 	logger.Info("Sending response", request.CallingWorkflowId)
 	err := workflow.SignalExternalWorkflow(
-		order.context,
+		cart.context,
 		request.CallingWorkflowId,
 		"",
 		contracts.OrderPaymentResponseChannel,
 		requests.PaymentResponse{Status: "OK"},
-	).Get(order.context, nil)
+	).Get(cart.context, nil)
 	if err != nil {
 		logger.Error("Sending response return error: ", err)
 	} else {
@@ -88,11 +93,19 @@ func (order *Order) Pay(c workflow.ReceiveChannel, more bool) {
 	}
 }
 
-func OrderWorkflow(ctx workflow.Context, id uuid.UUID) error {
+func (cart *Cart) CalledMidware(called *bool, cancel workflow.CancelFunc, f func(c workflow.ReceiveChannel, more bool)) func(c workflow.ReceiveChannel, more bool) {
+	return func(c workflow.ReceiveChannel, more bool) {
+		*(called) = true
+		cancel()
+		f(c, more)
+	}
+}
+
+func CartWorkflow(ctx workflow.Context, id uuid.UUID) error {
 	options := workflow.ActivityOptions{
 		StartToCloseTimeout: time.Second * 5,
 	}
-	order := Order{context: ctx, id: id}
+	cart := Cart{context: ctx, id: id}
 	logger := workflow.GetLogger(ctx)
 	ctx = workflow.WithActivityOptions(ctx, options)
 	options = workflow.ActivityOptions{
@@ -100,23 +113,47 @@ func OrderWorkflow(ctx workflow.Context, id uuid.UUID) error {
 		StartToCloseTimeout:    10 * time.Minute,
 		ScheduleToCloseTimeout: 10 * time.Second,
 	}
+	waitTimeForCancelCart := 1 * time.Minute
+	waitTimeForSendEmail := 30 * time.Second
 	addProductChan := workflow.GetSignalChannel(ctx, contracts.OrderAddProductRequestChannel)
 	updateProductChan := workflow.GetSignalChannel(ctx, contracts.OrderUpdateProductRequestChannel)
 	payChan := workflow.GetSignalChannel(ctx, contracts.OrderPaymentRequestChannel)
-	s := workflow.NewSelector(ctx)
-	timerFuture := workflow.NewTimer(ctx, 24*time.Hour)
-	s.AddFuture(timerFuture, func(f workflow.Future) {
-		if !order.paid { // processing is not done yet when timer fires, send notification email
-			// _ = workflow.ExecuteActivity(ctx, SendEmailActivity).Get(ctx, nil)
-			logger.Info("Send email remembering about this cart.")
-		}
-	})
+	cart.emailSended = false
 	for {
-		s.AddReceive(addProductChan, order.AddProduct)
-		s.AddReceive(updateProductChan, order.UpdateProduct)
-		s.AddReceive(payChan, order.Pay)
+		requestReceived := false
+		s := workflow.NewSelector(ctx)
+		childCtx, cancel := workflow.WithCancel(ctx)
+		s.AddReceive(addProductChan, cart.CalledMidware(&requestReceived, cancel, cart.AddProduct))
+		s.AddReceive(updateProductChan, cart.CalledMidware(&requestReceived, cancel, cart.UpdateProduct))
+		s.AddReceive(payChan, cart.CalledMidware(&requestReceived, cancel, cart.Payment))
+		if cart.emailSended {
+			cancelCartTimer := workflow.NewTimer(childCtx, waitTimeForCancelCart)
+			s.AddFuture(cancelCartTimer, func(f workflow.Future) {
+				if requestReceived {
+					cart.emailSended = false
+					return
+				}
+				logger.Info("Canceling this cart.")
+				cart.canceled = true
+			})
+		} else {
+			emailTimer := workflow.NewTimer(childCtx, waitTimeForSendEmail)
+			s.AddFuture(emailTimer, func(f workflow.Future) {
+				if requestReceived {
+					cart.emailSended = false
+					return
+				}
+				if cart.hasProducts {
+					cart.emailSended = true
+					logger.Info("Send email remembering about this cart.")
+				} else {
+					cart.canceled = true
+					logger.Info("Canceling this cart.")
+				}
+			})
+		}
 		s.Select(ctx)
-		if order.paid {
+		if cart.paying || cart.canceled {
 			logger.Info("Pay")
 			break
 		}
