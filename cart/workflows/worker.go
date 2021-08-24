@@ -4,6 +4,7 @@ import (
 	"services/cart/workflows/contracts"
 	"services/cart/workflows/requests"
 
+	"github.com/go-resty/resty/v2"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 )
@@ -21,7 +22,16 @@ func Worker() error {
 	w.RegisterWorkflow(requests.AddProductRequestWorkflow)
 	w.RegisterWorkflow(requests.UpdateProductRequestWorkflow)
 	w.RegisterWorkflow(requests.PaymentRequestWorkflow)
-	//w.RegisterActivity(order.ComposeGreeting)
+	w.RegisterActivity(SampleActivity)
+	client := resty.New().
+		SetHostURL("http://localhost:5000").
+		EnableTrace().
+		SetHeader("Content-Type", "application/json")
+
+	activities := &Activities{
+		HttpClient: *client,
+	}
+	w.RegisterActivity(activities)
 
 	// client := resty.New().
 	// 	SetHostURL("https://ab449f68-fa4b-4445-ba51-2cee2ad19ca8.mock.pstmn.io").

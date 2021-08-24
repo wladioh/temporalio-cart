@@ -31,10 +31,17 @@ func UpdateProductRequestWorkflow(ctx workflow.Context, request UpdateProductReq
 	workflowID := workflow.GetInfo(ctx).WorkflowExecution.ID
 	var res UpdateProductResponse
 	wrapRequest := contracts.Request{
-		CallingWorkflowId: workflowID,
-		Data:              request,
+		Body: request,
+		To: contracts.To{
+			WorkflowId:  request.OrderId,
+			ChannelName: contracts.OrderUpdateProductRequestChannel,
+		},
+		ReplyTo: contracts.ReplyTo{
+			WorkflowId:  workflowID,
+			ChannelName: contracts.OrderUpdateProductResponseChannel,
+		},
 	}
-	err := contracts.SendRequest(ctx, contracts.OrderUpdateProductRequestChannel, request.OrderId, contracts.OrderUpdateProductResponseChannel, wrapRequest, &res)
+	err := wrapRequest.Send(ctx, &res)
 
 	if err != nil {
 		logger.Error("Workflow Error: ", err)

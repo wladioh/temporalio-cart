@@ -29,10 +29,17 @@ func PaymentRequestWorkflow(ctx workflow.Context, request PaymentRequest) (strin
 	workflowID := workflow.GetInfo(ctx).WorkflowExecution.ID
 	var res PaymentResponse
 	wrapRequest := contracts.Request{
-		CallingWorkflowId: workflowID,
-		Data:              request,
+		Body: request,
+		To: contracts.To{
+			WorkflowId:  request.OrderId,
+			ChannelName: contracts.OrderPaymentRequestChannel,
+		},
+		ReplyTo: contracts.ReplyTo{
+			WorkflowId:  workflowID,
+			ChannelName: contracts.OrderPaymentResponseChannel,
+		},
 	}
-	err := contracts.SendRequest(ctx, contracts.OrderPaymentRequestChannel, request.OrderId, contracts.OrderPaymentResponseChannel, wrapRequest, &res)
+	err := wrapRequest.Send(ctx, &res)
 
 	if err != nil {
 		logger.Error("Workflow Error: ", err)

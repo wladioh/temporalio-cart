@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"services/cart/workflows"
 	"services/cart/workflows/contracts"
+	propagation "services/cart/workflows/propagator"
 	"services/cart/workflows/requests"
+
+	v11 "go.temporal.io/api/enums/v1"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.temporal.io/sdk/client"
 	Temporal "go.temporal.io/sdk/client"
 )
 
@@ -33,7 +35,9 @@ func (controller *CartController) CreateCart(c *gin.Context) {
 		ID:        id.String(),
 		TaskQueue: contracts.OrderTaskQueue,
 	}
-	we, err := controller.Client.ExecuteWorkflow(context.Background(), options, workflows.CartWorkflow, id)
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, propagation.PropagateKey, &propagation.Values{Key: "test", Value: "tested"})
+	we, err := controller.Client.ExecuteWorkflow(ctx, options, workflows.CartWorkflow, id)
 	if err != nil {
 		log.Fatalln("unable to complete Workflow", err)
 	}
@@ -50,12 +54,16 @@ func (controller *CartController) AddProduct(c *gin.Context) {
 	}
 	id, _ := uuid.Parse(c.Param("cartId"))
 
+	if !controller.WorkflowIsRunning(id) {
+		c.JSON(http.StatusBadRequest, "Cart is not running.")
+		return
+	}
 	var status string
 	request.OrderId = id.String()
 	err = controller.ExecuteWorkflow(requests.AddProductRequestWorkflow, request, &status)
 	if err != nil {
 		log.Print("Error signaling client", err)
-		c.String(http.StatusBadRequest, "%s ", err)
+		c.JSON(http.StatusBadRequest, err)
 		return
 	}
 
@@ -67,6 +75,7 @@ func (controller *CartController) ExecuteWorkflow(workflow interface{}, request 
 		ID:        uuid.NewString(),
 		TaskQueue: contracts.OrderTaskQueue,
 	}
+
 	log.Printf("Starting workflow %s", options.ID)
 	ctx := context.Background()
 	we, err := controller.Client.ExecuteWorkflow(ctx, options, workflow, request)
@@ -77,7 +86,25 @@ func (controller *CartController) ExecuteWorkflow(workflow interface{}, request 
 	err = we.Get(ctx, &response)
 	return err
 }
-
+func (controller *CartController) WorkflowIsRunning(id uuid.UUID) bool {
+	ctx := context.Background()
+	resp, err := controller.Client.QueryWorkflow(ctx, id.String(), "", "cando")
+	if err != nil {
+		log.Fatalln("Unable to query workflow", err)
+	}
+	var result []string
+	if err := resp.Get(&result); err != nil {
+		log.Fatalln("Unable to decode query result", err)
+		return false
+	}
+	log.Printf("I Can Do: %s", result)
+	response, err := controller.Client.DescribeWorkflowExecution(ctx, id.String(), "")
+	WFStatus := response.GetWorkflowExecutionInfo().GetStatus()
+	if err != nil || WFStatus != v11.WORKFLOW_EXECUTION_STATUS_RUNNING {
+		return false
+	}
+	return true
+}
 func (controller *CartController) UpdateProduct(c *gin.Context) {
 	var request requests.UpdateProductRequest
 	err := GetData(c, &request)
@@ -85,9 +112,11 @@ func (controller *CartController) UpdateProduct(c *gin.Context) {
 		c.String(http.StatusBadRequest, "Hello %s ", err)
 		return
 	}
-
 	id, _ := uuid.Parse(c.Param("cartId"))
-
+	if !controller.WorkflowIsRunning(id) {
+		c.JSON(http.StatusBadRequest, "Cart is not running.")
+		return
+	}
 	var status string
 	request.OrderId = id.String()
 	err = controller.ExecuteWorkflow(requests.UpdateProductRequestWorkflow, request, &status)
@@ -102,6 +131,10 @@ func (controller *CartController) UpdateProduct(c *gin.Context) {
 
 func (controller *CartController) Payment(c *gin.Context) {
 	id, _ := uuid.Parse(c.Param("cartId"))
+	if !controller.WorkflowIsRunning(id) {
+		c.JSON(http.StatusBadRequest, "Cart is not running.")
+		return
+	}
 	var status string
 	request := requests.PaymentRequest{OrderId: id.String()}
 	err := controller.ExecuteWorkflow(requests.PaymentRequestWorkflow, request, &status)
@@ -111,13 +144,9 @@ func (controller *CartController) Payment(c *gin.Context) {
 	c.JSON(http.StatusOK, status)
 }
 
-func v1(router *gin.RouterGroup) {
-	cl, err := Temporal.NewClient(client.Options{})
-	if err != nil {
-		log.Fatalln("unable to create Temporal client", err)
-	}
-	// defer cl.Close()
-	controller := CartController{Client: cl}
+func v1(router *gin.RouterGroup, client *Temporal.Client) {
+
+	controller := CartController{Client: *client}
 	v1 := router.Group("/v1")
 	v1.POST("/", controller.CreateCart)
 	v1.POST("/:cartId/product", controller.AddProduct)
@@ -145,7 +174,7 @@ func v1(router *gin.RouterGroup) {
 	})
 }
 
-func RegisterRoutes(rg *gin.Engine) {
+func RegisterRoutes(rg *gin.Engine, client *Temporal.Client) {
 	shipping := rg.Group("/cart")
-	v1(shipping)
+	v1(shipping, client)
 }

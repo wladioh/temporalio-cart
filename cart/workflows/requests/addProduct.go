@@ -21,19 +21,27 @@ type AddProductResponse struct {
 
 func AddProductRequestWorkflow(ctx workflow.Context, request AddProductRequest) (string, error) {
 	options := workflow.ActivityOptions{
-		ScheduleToStartTimeout: 10 * time.Second,
-		StartToCloseTimeout:    10 * time.Second,
-		ScheduleToCloseTimeout: 20 * time.Second,
+		ScheduleToStartTimeout: 10 * time.Minute,
+		// StartToCloseTimeout:    10 * time.Second,
+		// ScheduleToCloseTimeout: 20 * time.Second,
 	}
 	ctx = workflow.WithActivityOptions(ctx, options)
 	logger := workflow.GetLogger(ctx)
 	workflowID := workflow.GetInfo(ctx).WorkflowExecution.ID
-	wrapRequest := contracts.Request{
-		CallingWorkflowId: workflowID,
-		Data:              request,
-	}
+	wrapRequest := contracts.NewRequest(
+		contracts.To{
+			WorkflowId:  request.OrderId,
+			ChannelName: contracts.OrderAddProductRequestChannel,
+		},
+		contracts.ReplyTo{
+			WorkflowId:  workflowID,
+			ChannelName: contracts.OrderAddProductResponseChannel,
+		},
+		request,
+		11*time.Second,
+	)
 	var res AddProductResponse
-	err := contracts.SendRequest(ctx, contracts.OrderAddProductRequestChannel, request.OrderId, contracts.OrderAddProductResponseChannel, wrapRequest, &res)
+	err := wrapRequest.Send(ctx, &res)
 
 	logger.Info("Workflow completed.")
 	if err != nil {
